@@ -1,0 +1,21 @@
+# Node modules
+node_modules/
+
+# Environment variables
+.env
+
+# Uploaded files (optional)
+uploads/
+
+# Json files (optional)
+jsontest/
+
+# Test file (optional)
+test_file.txt
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

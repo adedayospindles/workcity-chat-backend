@@ -1,0 +1,33 @@
+{
+	"name": "workcity-chat-backend",
+	"version": "1.0.0",
+	"type": "module",
+	"main": "src/index.js",
+	"scripts": {
+		"dev": "nodemon src/index.js",
+		"start": "node src/index.js",
+		"lint": "eslint ."
+	},
+	"dependencies": {
+		"axios": "^1.11.0",
+		"bcryptjs": "^2.4.3",
+		"cookie-parser": "^1.4.6",
+		"cors": "^2.8.5",
+		"dotenv": "^16.6.1",
+		"express": "^4.19.2",
+		"form-data": "^4.0.4",
+		"http-status-codes": "^2.3.0",
+		"jsonwebtoken": "^9.0.2",
+		"mongoose": "^8.5.1",
+		"morgan": "^1.10.0",
+		"multer": "^1.4.5-lts.1",
+		"node-fetch": "^2.7.0",
+		"socket.io": "^4.7.5",
+		"socket.io-client": "^4.8.1",
+		"xss": "^1.0.15"
+	},
+	"devDependencies": {
+		"eslint": "^9.8.0",
+		"nodemon": "^3.1.4"
+	}
+}
