@@ -13,6 +13,9 @@ jsontest/
 # Test file (optional)
 test_file.txt
 
+# Backend test file
+backend_upload_test.js
+
 # Logs
 *.log
 
