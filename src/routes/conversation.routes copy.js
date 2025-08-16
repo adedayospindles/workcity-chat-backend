@@ -5,7 +5,6 @@ import { auth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/role.js";
 import { Conversation } from "../models/Conversation.js";
 import { Message } from "../models/Message.js";
-import { User } from "../models/User.js"; // ✅ FIXED: Import User
 import { StatusCodes } from "http-status-codes";
 
 const router = express.Router();
@@ -17,22 +16,12 @@ router.post("/", auth, async (req, res) => {
 	try {
 		const { participantIds = [], topic, productId } = req.body;
 
-		let participants = Array.from(
+		const participants = Array.from(
 			new Set([req.user._id.toString(), ...participantIds])
 		).map((id) => ({
 			user: new mongoose.Types.ObjectId(id),
 			role: id === req.user._id.toString() ? req.user.role : "agent",
 		}));
-
-		// If only current user, assign all agents
-		if (participants.length < 2) {
-			const agents = await User.find({ role: "agent" }).select("_id role");
-			if (agents.length > 0) {
-				agents.forEach((a) =>
-					participants.push({ user: a._id, role: "agent" })
-				);
-			}
-		}
 
 		if (participants.length < 2) {
 			return res
@@ -40,7 +29,7 @@ router.post("/", auth, async (req, res) => {
 				.json({ message: "At least 2 participants required" });
 		}
 
-		// Check for existing conversation
+		// Simplified existing conversation check
 		const existing = await Conversation.findOne({
 			"participants.user": { $all: participants.map((p) => p.user) },
 			topic: topic || null,
@@ -60,12 +49,12 @@ router.post("/", auth, async (req, res) => {
 		console.error("❌ Error creating conversation:", err);
 		res
 			.status(StatusCodes.INTERNAL_SERVER_ERROR)
-			.json({ message: "Server error" });
+			.json({ message: "Server error", error: err.message });
 	}
 });
 
 /**
- * List conversations (with participants + unread counts)
+ * List conversations for current user with unread counts & last message preview
  */
 router.get("/", auth, async (req, res) => {
 	try {
@@ -79,7 +68,6 @@ router.get("/", auth, async (req, res) => {
 			.sort({ lastMessageAt: -1 })
 			.skip(skip)
 			.limit(limit)
-			.populate("participants.user", "name email role") // ✅ Populate user names
 			.populate({
 				path: "lastMessage",
 				populate: { path: "sender", select: "name email role" },
@@ -126,18 +114,16 @@ router.get("/:id/messages", auth, async (req, res) => {
 		const limit = Math.min(100, parseInt(req.query.limit || "30", 10));
 		const skip = (page - 1) * limit;
 
-		const convo = await Conversation.findById(id).populate(
-			"participants.user",
-			"name role"
-		);
-		if (!convo)
+		const convo = await Conversation.findById(id);
+		if (!convo) {
 			return res
 				.status(StatusCodes.NOT_FOUND)
 				.json({ message: "Conversation not found" });
+		}
 
 		if (
 			!convo.participants.some(
-				(p) => p.user._id.toString() === req.user._id.toString()
+				(p) => p.user.toString() === req.user._id.toString()
 			)
 		) {
 			return res
@@ -149,7 +135,6 @@ router.get("/:id/messages", auth, async (req, res) => {
 			.sort({ createdAt: -1 })
 			.skip(skip)
 			.limit(limit)
-			.populate("sender", "name email role") // ✅ show sender name
 			.lean();
 
 		res.json({
@@ -157,91 +142,9 @@ router.get("/:id/messages", auth, async (req, res) => {
 			page,
 			limit,
 			total: messages.length,
-			participants: convo.participants, // ✅ send participants
 		});
 	} catch (err) {
 		console.error("❌ Error fetching messages:", err);
-		res
-			.status(StatusCodes.INTERNAL_SERVER_ERROR)
-			.json({ message: "Server error" });
-	}
-});
-
-/**
- * Send a message
- */
-router.post("/:id/messages", auth, async (req, res) => {
-	try {
-		const { id } = req.params;
-		const { text } = req.body;
-
-		const convo = await Conversation.findById(id);
-		if (!convo)
-			return res
-				.status(StatusCodes.NOT_FOUND)
-				.json({ message: "Conversation not found" });
-
-		if (
-			!convo.participants.some(
-				(p) => p.user.toString() === req.user._id.toString()
-			)
-		) {
-			return res
-				.status(StatusCodes.FORBIDDEN)
-				.json({ message: "Not a participant" });
-		}
-
-		const msg = await Message.create({
-			conversation: id,
-			sender: req.user._id,
-			text,
-			readBy: [req.user._id],
-		});
-
-		convo.lastMessage = msg._id;
-		convo.lastMessageAt = new Date();
-		await convo.save();
-
-		await msg.populate("sender", "name email role");
-
-		res.status(StatusCodes.CREATED).json(msg);
-	} catch (err) {
-		console.error("❌ Error sending message:", err);
-		res
-			.status(StatusCodes.INTERNAL_SERVER_ERROR)
-			.json({ message: "Server error" });
-	}
-});
-
-/**
- * Mark conversation as read
- */
-router.post("/:id/read", auth, async (req, res) => {
-	try {
-		const { id } = req.params;
-
-		const convo = await Conversation.findById(id);
-		if (!convo)
-			return res.status(StatusCodes.NOT_FOUND).json({ message: "Not found" });
-
-		if (
-			!convo.participants.some(
-				(p) => p.user.toString() === req.user._id.toString()
-			)
-		) {
-			return res
-				.status(StatusCodes.FORBIDDEN)
-				.json({ message: "Not a participant" });
-		}
-
-		await Message.updateMany(
-			{ conversation: id, readBy: { $ne: req.user._id } },
-			{ $push: { readBy: req.user._id } }
-		);
-
-		res.json({ message: "Conversation marked as read" });
-	} catch (err) {
-		console.error("❌ Error marking as read:", err);
 		res
 			.status(StatusCodes.INTERNAL_SERVER_ERROR)
 			.json({ message: "Server error" });
@@ -256,10 +159,11 @@ router.delete("/:id", auth, requireRole("admin", "agent"), async (req, res) => {
 		const { id } = req.params;
 
 		const convo = await Conversation.findById(id);
-		if (!convo)
+		if (!convo) {
 			return res
 				.status(StatusCodes.NOT_FOUND)
 				.json({ message: "Conversation not found" });
+		}
 
 		await Message.deleteMany({ conversation: id });
 		await convo.deleteOne();

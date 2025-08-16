@@ -62,9 +62,6 @@ router.post("/", auth, upload.single("file"), async (req, res) => {
 		convo.lastMessage = message._id;
 		await convo.save();
 
-		// ✅ FIX: Populate sender so frontend immediately gets user info
-		await message.populate("sender", "name email role");
-
 		res.status(StatusCodes.CREATED).json({
 			message: "Message sent successfully",
 			data: message,

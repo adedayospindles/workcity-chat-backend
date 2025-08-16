@@ -4,16 +4,22 @@ import { io } from "socket.io-client";
 
 const API_BASE = "http://localhost:5000/api";
 
-let user1 = {
+let user3 = {
 	name: "User One",
 	email: `user1+${Date.now()}@example.com`,
 	password: "123456",
 	role: "customer",
 };
-let user2 = {
-	name: "User Two",
-	email: `user2+${Date.now()}@example.com`,
+let user1 = {
+	name: "tolulope",
+	email: `tolu@lope.com`,
 	password: "123456",
+	role: "customer",
+};
+let user2 = {
+	name: "adedayo",
+	email: `maxkreativity@gmail.com`,
+	password: "2025@TheNew!",
 	role: "agent",
 };
 
@@ -105,8 +111,8 @@ function sleep(ms) {
 
 		const messagesUser2 = [
 			"Hi! I'm good, thanks!",
-			"Yes, I saw it.",
-			"Sure, let's go ahead.",
+			"Yes, I saw it and the issue has been escalated to the A team.",
+			"Sure, We are working on it.",
 		];
 
 		for (let i = 0; i < messagesUser1.length; i++) {
