@@ -11,71 +11,86 @@ const router = express.Router();
 const upload = multer({ dest: "uploads/" }); // TODO: replace with S3/GCS in prod
 
 /**
- * Send a message
+ * Send a message (supports text only OR text + file/image/attachment)
  */
-router.post("/", auth, upload.single("file"), async (req, res) => {
-	try {
-		const { conversationId, body } = req.body;
+router.post(
+	"/",
+	auth,
+	upload.fields([
+		{ name: "file", maxCount: 1 },
+		{ name: "image", maxCount: 1 },
+		{ name: "attachment", maxCount: 1 },
+	]),
+	async (req, res) => {
+		try {
+			const { conversationId, body } = req.body;
 
-		if (!conversationId) {
-			return res
-				.status(StatusCodes.BAD_REQUEST)
-				.json({ message: "conversationId is required" });
+			if (!conversationId) {
+				return res
+					.status(StatusCodes.BAD_REQUEST)
+					.json({ message: "conversationId is required" });
+			}
+
+			const convo = await Conversation.findById(conversationId);
+			if (!convo) {
+				return res
+					.status(StatusCodes.NOT_FOUND)
+					.json({ message: "Conversation not found" });
+			}
+
+			// ✅ Check if sender is a participant
+			if (
+				!convo.participants.some(
+					(p) => p.user.toString() === req.user._id.toString()
+				)
+			) {
+				return res
+					.status(StatusCodes.FORBIDDEN)
+					.json({ message: "Not a participant in this conversation" });
+			}
+
+			// ✅ Normalize file input (accept file, image, or attachment — all optional)
+			const uploadedFile =
+				(req.files?.file && req.files.file[0]) ||
+				(req.files?.image && req.files.image[0]) ||
+				(req.files?.attachment && req.files.attachment[0]);
+
+			// ✅ Create message with or without file
+			const message = await Message.create({
+				conversation: convo._id,
+				sender: req.user._id,
+				body: body || "", // allow empty body if file only
+				file: uploadedFile
+					? {
+							url: `/uploads/${uploadedFile.filename}`,
+							name: uploadedFile.originalname,
+							type: uploadedFile.mimetype,
+							size: uploadedFile.size,
+					  }
+					: undefined,
+				readBy: [req.user._id],
+			});
+
+			// ✅ Update conversation metadata
+			convo.lastMessageAt = new Date();
+			convo.lastMessage = message._id;
+			await convo.save();
+
+			// ✅ Populate sender so frontend gets user info immediately
+			await message.populate("sender", "name email role");
+
+			res.status(StatusCodes.CREATED).json({
+				message: "Message sent successfully",
+				data: message,
+			});
+		} catch (e) {
+			console.error("❌ Error sending message:", e);
+			res
+				.status(StatusCodes.INTERNAL_SERVER_ERROR)
+				.json({ message: "Server error" });
 		}
-
-		const convo = await Conversation.findById(conversationId);
-		if (!convo) {
-			return res
-				.status(StatusCodes.NOT_FOUND)
-				.json({ message: "Conversation not found" });
-		}
-
-		// Check if sender is a participant
-		if (
-			!convo.participants.some(
-				(p) => p.user.toString() === req.user._id.toString()
-			)
-		) {
-			return res
-				.status(StatusCodes.FORBIDDEN)
-				.json({ message: "Not a participant in this conversation" });
-		}
-
-		// Create message
-		const message = await Message.create({
-			conversation: convo._id,
-			sender: req.user._id,
-			body: body || "",
-			file: req.file
-				? {
-						url: `/uploads/${req.file.filename}`,
-						name: req.file.originalname,
-						type: req.file.mimetype,
-						size: req.file.size,
-				  }
-				: undefined,
-			readBy: [req.user._id],
-		});
-
-		// Update conversation metadata
-		convo.lastMessageAt = new Date();
-		convo.lastMessage = message._id;
-		await convo.save();
-
-		// ✅ FIX: Populate sender so frontend immediately gets user info
-		await message.populate("sender", "name email role");
-
-		res.status(StatusCodes.CREATED).json({
-			message: "Message sent successfully",
-			data: message,
-		});
-	} catch (e) {
-		console.error("❌ Error sending message:", e);
-		res
-			.status(StatusCodes.INTERNAL_SERVER_ERROR)
-			.json({ message: "Server error" });
 	}
-});
+);
 
 /**
  * Mark all messages in a conversation as read by the current user

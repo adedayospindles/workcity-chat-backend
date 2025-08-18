@@ -113,6 +113,12 @@ router.post("/login", async (req, res) => {
 	}
 });
 
+// Logout
+router.post("/api/auth/logout", (req, res) => {
+	// destroy session or clear token
+	res.json({ success: true });
+});
+
 // Refresh endpoint
 router.post("/refresh", async (req, res) => {
 	try {

@@ -7,6 +7,10 @@ export const auth = async (req, res, next) => {
 	try {
 		const authHeader = req.headers.authorization;
 		if (!authHeader || !authHeader.startsWith("Bearer ")) {
+			console.warn(
+				"❌ No Authorization header or malformed header:",
+				req.headers
+			);
 			return res
 				.status(StatusCodes.UNAUTHORIZED)
 				.json({ message: "No token provided" });
@@ -19,16 +23,22 @@ export const auth = async (req, res, next) => {
 			const decoded = jwt.verify(token, process.env.JWT_SECRET);
 			req.user = await User.findById(decoded.id).select("-password");
 			if (!req.user) {
+				console.warn("❌ Token valid but user not found:", decoded.id);
 				return res
 					.status(StatusCodes.UNAUTHORIZED)
 					.json({ message: "User not found" });
 			}
+			console.log("✅ Authenticated user:", req.user.email || req.user._id);
 			return next();
 		} catch (err) {
+			console.error("❌ Token verification failed:", err.message);
+
 			if (err.name === "TokenExpiredError") {
-				// Attempt Refresh Token Flow
+				console.warn("⚠️ Access token expired, trying refresh...");
+
 				const refreshToken = req.cookies?.refreshToken;
 				if (!refreshToken) {
+					console.warn("❌ No refresh token provided in cookies");
 					return res
 						.status(StatusCodes.UNAUTHORIZED)
 						.json({ message: "Token expired, please login again" });
@@ -40,7 +50,12 @@ export const auth = async (req, res, next) => {
 						process.env.JWT_REFRESH_SECRET
 					);
 					const user = await User.findById(decodedRefresh.id);
+
 					if (!user || user.refreshToken !== refreshToken) {
+						console.warn(
+							"❌ Invalid refresh token for user:",
+							decodedRefresh.id
+						);
 						return res
 							.status(StatusCodes.UNAUTHORIZED)
 							.json({ message: "Invalid refresh token" });
@@ -71,22 +86,31 @@ export const auth = async (req, res, next) => {
 						{ expiresIn: process.env.ACCESS_TOKEN_EXP || "15m" }
 					);
 
-					// Optionally send in header
 					res.setHeader("x-access-token", newAccessToken);
 
 					req.user = user;
+					console.log(
+						"✅ Issued new access token for:",
+						user.email || user._id
+					);
 					return next();
-				} catch {
+				} catch (refreshErr) {
+					console.error(
+						"❌ Refresh token verification failed:",
+						refreshErr.message
+					);
 					return res
 						.status(StatusCodes.UNAUTHORIZED)
 						.json({ message: "Refresh token expired, please login" });
 				}
 			}
+
 			return res
 				.status(StatusCodes.UNAUTHORIZED)
 				.json({ message: "Invalid token" });
 		}
 	} catch (err) {
+		console.error("🔥 Auth middleware server error:", err);
 		return res
 			.status(StatusCodes.INTERNAL_SERVER_ERROR)
 			.json({ message: "Server error" });

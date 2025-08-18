@@ -28,8 +28,20 @@ const server = http.createServer(app);
 // Enable CORS (Cross-Origin Resource Sharing)
 app.use(
 	cors({
-		origin: process.env.CORS_ORIGIN?.split(",") || "*",
-		credentials: true, // allow cookies/auth headers
+		origin: (origin, callback) => {
+			const allowed = process.env.CORS_ORIGIN
+				? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
+				: [];
+
+			// ✅ Allow Postman/curl (no origin), wildcard, or exact match
+			if (!origin || allowed.includes("*") || allowed.includes(origin)) {
+				return callback(null, true);
+			}
+
+			// ❌ Otherwise block
+			return callback(new Error(`CORS blocked for origin: ${origin}`));
+		},
+		credentials: true, // 🔑 allow cookies (refresh token, session)
 	})
 );
 
@@ -77,8 +89,20 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 // --------------------
 const io = new SocketIOServer(server, {
 	cors: {
-		origin: process.env.CORS_ORIGIN?.split(",") || "*",
-		credentials: true,
+		origin: (origin, callback) => {
+			const allowed = process.env.CORS_ORIGIN
+				? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
+				: [];
+
+			if (!origin || allowed.includes("*") || allowed.includes(origin)) {
+				return callback(null, true);
+			}
+
+			return callback(
+				new Error(`❌ Socket.IO CORS blocked for origin: ${origin}`)
+			);
+		},
+		credentials: true, // 🔑 allow cookies for socket auth too
 	},
 });
 registerChatNamespace(io);
